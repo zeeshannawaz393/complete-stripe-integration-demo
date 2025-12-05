@@ -1,20 +1,31 @@
 // Stores instances to managing state
 let stripe;
 let elements;
-let currentMode = 'pay_now'; // or 'setup_future'
+let currentMode = 'pay_now'; // can be 'pay_now', 'setup_future', or 'save_card'
 
-// 1. Initialize Stripe
+// -----------------------------------------------------------------------------
+// 1. INITIALIZE STRIPE
+// -----------------------------------------------------------------------------
 async function initialize() {
-    // Key is injected directly into HTML by EJS
-    stripe = Stripe(STRIPE_PUBLISHABLE_KEY);
+    // We start the Stripe SDK. 
+    // Important: We pass 'stripeAccount' which is the Connected Account ID injected from EJS.
+    // This tells Stripe: "We are acting on behalf of this Connected Account."
+    stripe = Stripe(STRIPE_PUBLISHABLE_KEY, {
+        stripeAccount: STRIPE_CONNECTED_ACCOUNT_ID
+    });
 
-    // Check if we were redirected back from a payment
+    // If the user was redirected back here after a payment (e.g., 3D Secure), show success.
     checkUrlForSuccess();
 
-    // Load the initial state based on the default checked radio button
+    // Check which payment mode is selected by default and load it.
     updatePaymentMode();
 }
 
+// -----------------------------------------------------------------------------
+// CHECK FOR SUCCESS REDIRECT
+// -----------------------------------------------------------------------------
+// When a payment finishes, Stripe redirects back to 'return_url' with params.
+// We look for 'redirect_status=succeeded'.
 function checkUrlForSuccess() {
     const urlParams = new URLSearchParams(window.location.search);
     const redirectStatus = urlParams.get('redirect_status');
@@ -25,8 +36,13 @@ function checkUrlForSuccess() {
     }
 }
 
-// 2. Handle Mode Switching
+// -----------------------------------------------------------------------------
+// 2. HANDLE MODE SWITCHING & LOADING ELEMENTS
+// -----------------------------------------------------------------------------
+// This function runs every time the user clicks a Radio Button (Pay Now, Reserve, etc.)
+// OR toggles the "Save Card" checkbox.
 async function updatePaymentMode() {
+    // A. Detect which Radio Button is selected
     const radios = document.getElementsByName('paymentMode');
     for (const radio of radios) {
         if (radio.checked) {
@@ -38,31 +54,44 @@ async function updatePaymentMode() {
     const submitBtn = document.getElementById('submit');
     const btnText = document.getElementById('button-text');
     const saveCardBox = document.getElementById('save-card-option');
+    // Check if the "Save Card" checkbox is ticked (Only applies to 'pay_now' mode)
     const isChecked = document.getElementById('save-card-checkbox').checked;
 
+    // B. Logic for each Mode
     if (currentMode === 'pay_now') {
-        saveCardBox.classList.remove('hidden'); // Show checkbox
-        btnText.textContent = "Pay £1.00 Now";
-        // Pass the checkbox state
-        await loadPaymentElement('/create-payment-intent', { amount: 100, currency: 'gbp', saveCard: isChecked });
+        // --- Mode 1: Pay Full Amount (£5.00) ---
+        saveCardBox.classList.remove('hidden'); // Show the "Save Card" checkbox
+        btnText.textContent = "Pay £5.00 Now";
+
+        // Call Backend: Create PaymentIntent
+        // We pass 'saveCard: isChecked' so the backend knows whether to save it for future.
+        await loadPaymentElement('/create-payment-intent', { amount: 500, currency: 'gbp', saveCard: isChecked });
 
     } else if (currentMode === 'save_card') {
-        saveCardBox.classList.add('hidden'); // Hide checkbox (redundant)
+        // --- Mode 3: Save Card Only (£0) ---
+        saveCardBox.classList.add('hidden'); // Hide checkbox (it's implicit here)
         btnText.textContent = "Save Card on File";
+
+        // Call Backend: Create SetupIntent (Customer + Setup)
         await loadPaymentElement('/create-customer-setup-intent', {});
 
     } else {
-        saveCardBox.classList.add('hidden'); // Hide checkbox
+        // --- Mode 2: Reserve Slot (Zero Auth) ---
+        saveCardBox.classList.add('hidden');
         btnText.textContent = "Reserve Spot (Pay £0.00)";
+
+        // Call Backend: Create SetupIntent
         await loadPaymentElement('/create-setup-intent', {});
     }
 }
 
-// 3. Load Payment Element
+// -----------------------------------------------------------------------------
+// 3. FETCH SECRET & MOUNT STRIPE ELEMENT
+// -----------------------------------------------------------------------------
+// This fetches the 'clientSecret' from our backend and mounts the UI.
 async function loadPaymentElement(endpoint, body) {
-    // Show loading state if needed
-
     try {
+        // A. Fetch the Client Secret from our Backend
         const response = await fetch(endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -76,7 +105,7 @@ async function loadPaymentElement(endpoint, body) {
             return;
         }
 
-        // Define appearance
+        // B. Define Style/Theme (Premium Dark Mode)
         const appearance = {
             theme: 'night',
             labels: 'floating',
@@ -87,10 +116,12 @@ async function loadPaymentElement(endpoint, body) {
             },
         };
 
-        // Create Elements instance (Only once)
+        // C. Create the Stripe Elements Instance
+        // We pass the 'clientSecret' so Elements knows which Intent it's handling.
         elements = stripe.elements({ appearance, clientSecret });
 
-        /*** 1. Mount Standard Payment Element (Cards + Wallets) ***/
+        // D. Create the Payment Element
+        // This includes Credit Card inputs + Apple Pay + Google Pay automatically.
         const paymentElementOptions = {
             layout: 'tabs',
             wallets: {
@@ -101,11 +132,9 @@ async function loadPaymentElement(endpoint, body) {
 
         const paymentElement = elements.create('payment', paymentElementOptions);
 
-        // Safety: Clear previous element if any
+        // E. Mount it to the DIV in our HTML
         const container = document.getElementById('payment-element');
-        container.innerHTML = '';
-
-        // Mount
+        container.innerHTML = ''; // Clear any existing form to prevent duplicates
         paymentElement.mount('#payment-element');
 
     } catch (e) {
@@ -113,25 +142,27 @@ async function loadPaymentElement(endpoint, body) {
     }
 }
 
-// 4. Handle Submit
+// -----------------------------------------------------------------------------
+// 4. HANDLE FORM SUBMISSION
+// -----------------------------------------------------------------------------
 document.getElementById('payment-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    setLoading(true);
+    setLoading(true); // Show spinner
 
     let result;
 
     if (currentMode === 'pay_now') {
-        // Confirm Payment
+        // CASE A: Processing a Payment (Charging Money)
         result = await stripe.confirmPayment({
             elements,
             confirmParams: {
-                // Return URL where the user is redirected after the payment.
-                // explicitly use origin to ensure full path
+                // If payment succeeds, redirect here.
                 return_url: window.location.origin + window.location.pathname,
             },
         });
     } else {
-        // Confirm Setup
+        // CASE B: Saving a Card (SetupIntent)
+        // Used for "Reserve Slot" and "Save Card" modes.
         result = await stripe.confirmSetup({
             elements,
             confirmParams: {
@@ -140,20 +171,22 @@ document.getElementById('payment-form').addEventListener('submit', async (e) => 
         });
     }
 
-
+    // Handle Errors (e.g. Card Declined)
     if (result.error) {
-        // Show error to your customer (e.g., insufficient funds)
         showMessage(result.error.message);
     } else {
-        // The payment UI will automatically close on success and redirect,
-        // so this code might not be reached if redirect happens.
+        // Note: Faster payment methods might redirect immediately, 
+        // so this line might not be reached.
         showMessage("Success! Redirecting...");
     }
 
     setLoading(false);
 });
 
-// UI Helpers
+// -----------------------------------------------------------------------------
+// UI HELPER FUNCTIONS
+// -----------------------------------------------------------------------------
+
 function showMessage(messageText) {
     const messageContainer = document.querySelector('#payment-message');
     messageContainer.classList.remove('hidden');
@@ -177,6 +210,6 @@ function setLoading(isLoading) {
     }
 }
 
-// Start
+// Start the App
 initialize();
-window.updatePaymentMode = updatePaymentMode; // expose to window for radio onclick
+window.updatePaymentMode = updatePaymentMode; // Export function so HTML <input> can call it

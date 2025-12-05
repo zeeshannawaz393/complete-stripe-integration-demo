@@ -1,68 +1,94 @@
-require('dotenv').config();
+require('dotenv').config(); // Load environment variables from .env file
 const express = require('express');
 const app = express();
 const { resolve } = require('path');
-// Initialize Stripe with the secret key from .env
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
-app.use(express.static('public'));
-app.use(express.json());
-app.set('view engine', 'ejs');
+// -----------------------------------------------------------------------------
+// STRIPE INITIALIZATION
+// -----------------------------------------------------------------------------
+// We initialize Stripe with:
+// 1. STRIPE_SECRET_KEY: Our backend secret key (sk_test_...) to authenticate.
+// 2. stripeAccount: The Connected Account ID (acct_...) we want to manipulate.
+//    This ensures that all Customers, Payments, and Cards are created ON that account,
+//    not on our Platform account.
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY, {
+    stripeAccount: process.env.STRIPE_CONNECTED_ACCOUNT_ID
+});
 
-// Render the Main Page
+// Middleware setup
+app.use(express.static('public')); // Serve static files (client.js, style.css)
+app.use(express.json()); // Allow server to parse JSON bodies from frontend
+app.set('view engine', 'ejs'); // Use EJS for dynamic HTML rendering
+
+// -----------------------------------------------------------------------------
+// ROUTE: Render Main Page
+// -----------------------------------------------------------------------------
 app.get('/', (req, res) => {
+    // We inject the Publishable Key and Account ID into the HTML.
+    // This allows the Frontend to start Stripe Elements with the correct credentials.
     res.render('index', {
         publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
+        connectedAccountId: process.env.STRIPE_CONNECTED_ACCOUNT_ID
     });
 });
 
-// 1. OPTION 1: PAY NOW (Optional: Save Card)
+// -----------------------------------------------------------------------------
+// ROUTE: Option 1 - PAY NOW (£5.00)
+// -----------------------------------------------------------------------------
+// Purpose: Charge the user immediately.
+// Optional: Save the card for later use if they checked the box.
 app.post('/create-payment-intent', async (req, res) => {
-    const { amount, currency, saveCard } = req.body; // <--- Read the Checkbox
+    const { amount, currency, saveCard } = req.body;
 
     try {
-        // A. Always Create/Get Customer (Good practice)
+        // STEP A: Create a Stripe Customer
+        // Why? It's best practice. It groups their payments and allows sending receipts.
         const customer = await stripe.customers.create();
 
-        // B. Prepare Intent Options
+        // STEP B: Prepare the PaymentIntent Options
         const options = {
-            amount: amount,
+            amount: amount, // e.g., 500 = £5.00
             currency: currency || 'gbp',
-            customer: customer.id,
+            customer: customer.id, // Attach the payment to this new customer
             payment_method_types: ['card'],
-            // setup_future_usage: 'off_session', <--- REMOVING DEFAULT FORCE SAVE
         };
 
-        // ONLY save if user asked for it
+        // STEP C: Conditional Logic for Saving Card
+        // If the user checked "Save Card", we add 'setup_future_usage'.
+        // This tells Stripe: "After you charge this, keep the card active for off-session payments later."
         if (saveCard) {
             options.setup_future_usage = 'off_session';
         }
 
+        // STEP D: Create the PaymentIntent
+        // This generates a 'client_secret' that the frontend needs to complete the payment.
         const paymentIntent = await stripe.paymentIntents.create(options);
 
-        // Send the client_secret to the frontend
+        // Send the secret back to the frontend
         res.send({
             clientSecret: paymentIntent.client_secret,
             customerId: customer.id
         });
     } catch (e) {
         res.status(400).send({
-            error: {
-                message: e.message,
-            },
+            error: { message: e.message },
         });
     }
 });
 
-// 2. ZERO UPFRONT PAYMENT (Reserve Spot)
-// This creates a setup intent to validate and save the card for future use.
-// NOW: It also creates a Customer so you can charge them later.
+// -----------------------------------------------------------------------------
+// ROUTE: Option 2 - RESERVE SPOT (£0 Upfront)
+// -----------------------------------------------------------------------------
+// Purpose: Verify the card is real and valid, but don't charge it yet.
+// Key Difference: Uses 'setupIntents' instead of 'paymentIntents'.
 app.post('/create-setup-intent', async (req, res) => {
     try {
-        // A. Create Customer for the Reservation
+        // STEP A: Create a Customer
+        // Essential here because we want to attach the card to someone so we can charge it later (No-Show fee).
         const customer = await stripe.customers.create();
 
-        // B. Create SetupIntent linked to Customer
+        // STEP B: Create a SetupIntent
+        // This does a $0 or £0 authorization on the card banks.
         const setupIntent = await stripe.setupIntents.create({
             customer: customer.id,
             payment_method_types: ['card'],
@@ -74,21 +100,20 @@ app.post('/create-setup-intent', async (req, res) => {
         });
     } catch (e) {
         res.status(400).send({
-            error: {
-                message: e.message,
-            },
+            error: { message: e.message },
         });
     }
 });
 
-// 3. OPTION 3: SAVE CARD FOR FUTURE (Customer + SetupIntent)
-// This validates the card AND saves it to a specific Customer ID in Stripe.
+// -----------------------------------------------------------------------------
+// ROUTE: Option 3 - SAVE CARD (Explicit)
+// -----------------------------------------------------------------------------
+// Purpose: Explicitly just save a card. Functionally identical to Option 2 internally
+// but served as a distinct endpoint to keep logic clear/separate if requirements diverge.
 app.post('/create-customer-setup-intent', async (req, res) => {
     try {
-        // 1. Create a Customer
         const customer = await stripe.customers.create();
 
-        // 2. Create a SetupIntent linked to this Customer
         const setupIntent = await stripe.setupIntents.create({
             customer: customer.id,
             payment_method_types: ['card'],
@@ -96,18 +121,16 @@ app.post('/create-customer-setup-intent', async (req, res) => {
 
         res.send({
             clientSecret: setupIntent.client_secret,
-            customerId: customer.id // returning this just for your debug info if needed
+            customerId: customer.id
         });
     } catch (e) {
         res.status(400).send({
-            error: {
-                message: e.message,
-            },
+            error: { message: e.message },
         });
     }
 });
 
-// Use the port provided by the cPanel/hosting environment, or fallback to 4242 for local dev
+// Start the Server
 const PORT = process.env.PORT || 4242;
 app.listen(PORT, () =>
     console.log(`Node server listening on port ${PORT}!`)

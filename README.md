@@ -71,68 +71,14 @@ stripeTest/
 └── .htaccess            # The Gateway. Routes web traffic to Node.
 ```
 
-## 5. 🚀 Quick Start Guide
+## 5. How to Run
 
-### Step 1: Clone and Install
-```bash
-git clone https://github.com/zeeshannawaz393/complete-stripe-integration-demo.git
-cd complete-stripe-integration-demo
-npm install
-```
+### Locally
+1.  `npm install`
+2.  `node server.js`
+3.  Visit `http://localhost:4242`
 
-### Step 2: Configure Environment Variables
-You **must** create a `.env` file in the root directory to store your keys.
-1.  Create a file named `.env`
-2.  Add the following lines (replace with your keys from [Stripe Dashboard > Developers > API keys](https://dashboard.stripe.com/apikeys)):
-
-```env
-STRIPE_PUBLISHABLE_KEY=pk_test_...
-STRIPE_SECRET_KEY=sk_test_...
-# PORT=4242 (Optional, defaults to 4242)
-```
-
-### Step 3: Run the Application
-```bash
-node server.js
-```
-Visit `http://localhost:4242` in your browser.
-
----
-
-## 6. 🍎 Enabling Apple Pay & Google Pay (Crucial)
-
-For these buttons to appear, specific conditions **must** be met.
-
-### ✅ 1. HTTPS is Mandatory
-*   **Live Mode:** Your site **must** be served over `https://`.
-*   **Test Mode:** `http://localhost` works. If you deploy to a server (even for testing), it must have SSL (HTTPS).
-
-### ✅ 2. Apple Pay Domain Verification (REQUIRED)
-Apple Pay **will not appear** on a hosted domain (Live or Test) until you verify ownership.
-
-1.  Go to **Stripe Dashboard** > **Settings** > **Payment Methods** > **Apple Pay** > **[Configure]**
-    *   *Direct Link:* [https://dashboard.stripe.com/settings/payments/apple_pay](https://dashboard.stripe.com/settings/payments/apple_pay)
-2.  Click **"Add new domain"**.
-3.  Enter your domain name (e.g., `www.luxesalon.com`).
-4.  **Download** the verification file (`apple-developer-merchantid-domain-association`).
-5.  Upload this specific file to your server so it is accessible at:  
-    `https://your-domain.com/.well-known/apple-developer-merchantid-domain-association`
-6.  Click **"Verify"** in the Stripe Dashboard.
-
-> **Note:** You must do this for **both** Test Mode and Live Mode domains independently.
-
-### ✅ 3. Google Pay
-*   Google Pay usually works automatically if you are on HTTPS.
-*   Ensure "Google Pay" is enabled in your Stripe Dashboard Payment Methods settings.
-
----
-
-## 7. Deployment (cPanel / Custom Server)
-
-### Using the Reverse Proxy Method (Recommended for cPanel)
-1.  Upload all files to your server.
-2.  Run `npm install`.
-3.  Start the server in the background:  
-    `nohup node server.js &`
-4.  The included `.htaccess` file handles the traffic routing, so you don't need to configure complex Nginx/Apache proxies manually.
-
+### On Server (cPanel)
+1.  Upload files to the domain folder.
+2.  Run `nohup node server.js &` (to keep it running in background).
+3.  The `.htaccess` file handles the rest!
