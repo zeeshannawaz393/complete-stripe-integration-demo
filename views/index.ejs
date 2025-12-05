@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Luxe Salon | Booking & Payment</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="https://js.stripe.com/v3/"></script>
+
+    <!-- INJECT Key directly from Server -->
+    <script>
+        const STRIPE_PUBLISHABLE_KEY = '<%= publishableKey %>';
+    </script>
+    <script src="client.js" defer></script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Inter:wght@300;400;500;600&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+    <div class="container">
+
+        <!-- Left Side: Order Summary -->
+        <div class="summary-section">
+            <div class="brand">
+                <h1>LUXE SALON</h1>
+                <p>Exquisite Grooming Experience</p>
+            </div>
+
+            <div class="order-details">
+                <h2>Your Booking</h2>
+                <div class="item">
+                    <span class="item-name">Booking Reservation Fee</span>
+                    <span class="item-price">£1.00</span>
+                </div>
+                <hr />
+                <div class="total">
+                    <span>Total</span>
+                    <span class="total-price">£1.00</span>
+                </div>
+            </div>
+
+            <div class="info-box">
+                <p><strong>Note:</strong> We accept all standard credit cards, Apple Pay, and Google Pay.</p>
+            </div>
+        </div>
+
+        <!-- Right Side: Payment Form -->
+        <div class="payment-section">
+
+            <!-- SUCCESS SCREEN (Hidden by default) -->
+            <div id="success-screen" class="hidden" style="text-align: center; padding-top: 40px;">
+                <div
+                    style="background: #22c55e; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px;">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                </div>
+                <h2 style="color: #fff; margin-bottom: 10px;">Payment Successful!</h2>
+                <p style="color: #a0a0a0; margin-bottom: 30px;">Your booking has been confirmed.</p>
+                <a href="/"
+                    style="color: #d4af37; text-decoration: none; font-weight: 600; border: 1px solid #333; padding: 10px 20px; border-radius: 6px;">Book
+                    Another</a>
+            </div>
+
+            <div class="payment-container" id="payment-main-container">
+                <h2>Complete Your Booking</h2>
+
+                <!-- Toggle for Payment Mode -->
+                <div class="payment-mode-selector">
+                    <p class="label">Choose Payment Option:</p>
+                    <div class="toggle-group">
+                        <label class="toggle-option">
+                            <input type="radio" name="paymentMode" value="pay_now" checked
+                                onchange="updatePaymentMode()">
+                            <div class="box">
+                                <span class="title">Pay Full Amount</span>
+                                <span class="desc">Charge card now (£1.00)</span>
+                            </div>
+                        </label>
+
+                        <label class="toggle-option">
+                            <input type="radio" name="paymentMode" value="setup_future" onchange="updatePaymentMode()">
+                            <div class="box">
+                                <span class="title">Reserve Slot</span>
+                                <span class="desc">£0 Upfront. Pay at Salon.</span>
+                            </div>
+                        </label>
+
+                        <label class="toggle-option">
+                            <input type="radio" name="paymentMode" value="save_card" onchange="updatePaymentMode()">
+                            <div class="box">
+                                <span class="title">Save Card</span>
+                                <span class="desc">£0 Now. Save card for future charges.</span>
+                            </div>
+                        </label>
+                    </div>
+
+                    <!-- NEW: Save Card Checkbox for Option 1 -->
+                    <div id="save-card-option" style="margin-top: 15px; padding-left: 5px;">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="save-card-checkbox" onchange="updatePaymentMode()"
+                                style="width: 18px; height: 18px; margin-right: 10px; accent-color: #d4af37;">
+                            <span style="color: #ccc; font-size: 0.9rem;">Save this card for future payments</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Stripe Elements Warning/Status -->
+                <div id="payment-message" class="hidden"></div>
+
+                <form id="payment-form">
+                    <div id="payment-element">
+                        <!-- Stripe.js injects the Payment Element here -->
+                    </div>
+
+                    <button id="submit">
+                        <div class="spinner hidden" id="spinner"></div>
+                        <span id="button-text">Pay now</span>
+                    </button>
+                </form>
+
+                <div class="secure-badge">
+                    <svg width="12" height="15" viewBox="0 0 12 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path
+                            d="M10.8 6H9.6V3.6C9.6 1.61177 7.98823 0 6 0C4.01177 0 2.4 1.61177 2.4 3.6V6H1.2C0.537258 6 0 6.53726 0 7.2V13.2C0 13.8627 0.537258 14.4 1.2 14.4H10.8C11.4627 14.4 12 13.8627 12 13.2V7.2C12 6.53726 11.4627 6 10.8 6ZM6 11.4C5.33726 11.4 4.8 10.8627 4.8 10.2C4.8 9.53726 5.33726 9 6 9C6.66274 9 7.2 9.53726 7.2 10.2C7.2 10.8627 6.66274 11.4 6 11.4ZM8.4 6H3.6V3.6C3.6 2.27452 4.67452 1.2 6 1.2C7.32548 1.2 8.4 2.27452 8.4 3.6V6Z"
+                            fill="#888" />
+                    </svg>
+                    Payments secured by Stripe
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+</body>
+
+</html>
