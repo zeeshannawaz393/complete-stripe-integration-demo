@@ -1,7 +1,20 @@
 require('dotenv').config(); // Load environment variables from .env file
 const express = require('express');
 const app = express();
+const cors = require('cors'); // <--- Import CORS
 const { resolve } = require('path');
+
+// -----------------------------------------------------------------------------
+// CORS CONFIGURATION
+// -----------------------------------------------------------------------------
+// Allow all origins for development (useful for testing from any frontend)
+// For production, restrict to specific domains for security
+app.use(cors({
+    origin: '*', // Allow all origins (development mode)
+    // For production, replace with specific domains:
+    // origin: ['https://yourdomain.com', 'https://app.yourdomain.com'],
+    credentials: true
+}));
 
 // -----------------------------------------------------------------------------
 // STRIPE INITIALIZATION
@@ -27,6 +40,17 @@ app.get('/', (req, res) => {
     // We inject the Publishable Key and Account ID into the HTML.
     // This allows the Frontend to start Stripe Elements with the correct credentials.
     res.render('index', {
+        publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
+        connectedAccountId: process.env.STRIPE_CONNECTED_ACCOUNT_ID
+    });
+});
+
+// -----------------------------------------------------------------------------
+// ROUTE: Config Endpoint for Frontend Apps (Next.js, etc.)
+// -----------------------------------------------------------------------------
+// This endpoint allows external frontends to fetch the publishable key and account ID
+app.get('/config', (req, res) => {
+    res.send({
         publishableKey: process.env.STRIPE_PUBLISHABLE_KEY,
         connectedAccountId: process.env.STRIPE_CONNECTED_ACCOUNT_ID
     });
@@ -67,7 +91,8 @@ app.post('/create-payment-intent', async (req, res) => {
         // Send the secret back to the frontend
         res.send({
             clientSecret: paymentIntent.client_secret,
-            customerId: customer.id
+            customerId: customer.id,
+            connectedAccountId: process.env.STRIPE_CONNECTED_ACCOUNT_ID
         });
     } catch (e) {
         res.status(400).send({
@@ -96,7 +121,8 @@ app.post('/create-setup-intent', async (req, res) => {
 
         res.send({
             clientSecret: setupIntent.client_secret,
-            customerId: customer.id
+            customerId: customer.id,
+            connectedAccountId: process.env.STRIPE_CONNECTED_ACCOUNT_ID
         });
     } catch (e) {
         res.status(400).send({
@@ -121,7 +147,8 @@ app.post('/create-customer-setup-intent', async (req, res) => {
 
         res.send({
             clientSecret: setupIntent.client_secret,
-            customerId: customer.id
+            customerId: customer.id,
+            connectedAccountId: process.env.STRIPE_CONNECTED_ACCOUNT_ID
         });
     } catch (e) {
         res.status(400).send({
